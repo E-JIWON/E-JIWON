@@ -16,7 +16,7 @@ Here are some ideas to get you started:
 
 
 ## 🎈 T E C H 🎈
-[TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)
+[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)]
 
 
   [![JS](https://img.shields.io/badge/JavaScript-F7DF1E?style=flat-square&logo=JavaScript&logoColor=black)](https://github.com/meowoof011/02_MatrixCalculator)
