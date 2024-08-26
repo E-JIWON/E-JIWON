@@ -15,7 +15,9 @@ Here are some ideas to get you started:
 - ⚡ Fun fact: ...
 -->
 
+
 <div align="center">
+  
 ![header](https://capsule-render.vercel.app/api?type=wave&color=auto&height=300&section=header&text=EASY%20ONE🎈&fontSize=55&fontColor=#FFF)
 
 ## 🎈 T E C H 🎈
