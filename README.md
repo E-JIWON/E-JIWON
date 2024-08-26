@@ -16,13 +16,11 @@ Here are some ideas to get you started:
 
 
 ## 🎈 T E C H 🎈
-https://img.shields.io/badge/아이콘내용-바탕색?style=flat&logo=로고이름&logoColor=white
-
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat-square&logo=typescript&logoColor=white)
 [![JS](https://img.shields.io/badge/JavaScript-F7DF1E?style=flat-square&logo=JavaScript&logoColor=black)](https://github.com/meowoof011/02_MatrixCalculator)
 [![jQuery](https://img.shields.io/badge/jQuery-0769AD?style=flat-square&logo=jQuery&logoColor=white)](https://github.com/meowoof011/08_AnimalCrossing)<br />
 
-![Next.js](https://img.shields.io/badge/Next.js-000?logo=nextdotjs&logoColor=fff&style=for-the-badge)
+![Next.js](https://img.shields.io/badge/Next.js-000?logo=nextdotjs&logoColor=fff&style=flat-square)
 ![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
 ![VUE](https://img.shields.io/badge/VUE-41B883?style=flat-square&logo=VUE&logoColor=white)<br />
 
