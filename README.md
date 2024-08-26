@@ -15,7 +15,6 @@ Here are some ideas to get you started:
 
 
 <div align="center">
-![header](https://capsule-render.vercel.app/api?type=wave&color=auto&height=300&section=header&text=EASY%20ONE🎈&fontSize=55&fontColor=#FFF)
 
 ## 🎈 T E C H 🎈
   [![JS](https://img.shields.io/badge/JavaScript-F7DF1E?style=flat-square&logo=JavaScript&logoColor=black)](https://github.com/meowoof011/02_MatrixCalculator)
