@@ -14,9 +14,11 @@ Here are some ideas to get you started:
 -->
 
 
-<div align="center">
 
 ## 🎈 T E C H 🎈
+[TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)
+
+
   [![JS](https://img.shields.io/badge/JavaScript-F7DF1E?style=flat-square&logo=JavaScript&logoColor=black)](https://github.com/meowoof011/02_MatrixCalculator)
   [![jQuery](https://img.shields.io/badge/jQuery-0769AD?style=flat-square&logo=jQuery&logoColor=white)](https://github.com/meowoof011/08_AnimalCrossing)
   [![PHP](https://img.shields.io/badge/PHP-777BB4?style=flat-square&logo=PHP&logoColor=white)](https://github.com/meowoof011/05_KioskProject)
