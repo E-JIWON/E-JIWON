@@ -20,7 +20,7 @@ Here are some ideas to get you started:
 사용자 중심의 디자인에 매료되어 프론트엔드 개발자로서 성장하고 있습니다.
 ```
 
-
+<p align="center">
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat-square&logo=typescript&logoColor=white)
 [![JS](https://img.shields.io/badge/JavaScript-F7DF1E?style=flat-square&logo=JavaScript&logoColor=black)](https://github.com/meowoof011/02_MatrixCalculator)
 [![jQuery](https://img.shields.io/badge/jQuery-0769AD?style=flat-square&logo=jQuery&logoColor=white)](https://github.com/meowoof011/08_AnimalCrossing)   
@@ -35,3 +35,4 @@ Here are some ideas to get you started:
 [![Adobe Photoshop](https://img.shields.io/badge/Photoshop-31A8FF?style=flat-square&logo=AdobePhotoshop&logoColor=white)](https://github.com/meowoof011/03_ProductInfo) 
 ![Adobe XD](https://img.shields.io/badge/Adobe%20XD-470137?style=flat-square&logo=Adobe%20XD&logoColor=#FF61F6)
 ![Figma](https://img.shields.io/badge/Figma-F24E1E?style=flat-square&logo=figma&logoColor=white)
+</p>
