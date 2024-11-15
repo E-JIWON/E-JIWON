@@ -40,11 +40,13 @@ Here are some ideas to get you started:
 </div>
 
 ---
-<a href="https://github.com/devxb/gitanimals">
-<img
-  src="https://render.gitanimals.org/farms/E-JIWON"
-  width="600"
-  height="300"
-/>
+<div align=center>
+  <a href="https://github.com/devxb/gitanimals">
+  <img
+    src="https://render.gitanimals.org/farms/E-JIWON"
+    width="300"
+    height="100"
+  />
+</div>
 </a>
 
