@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#FFE3C6">
+  <title>오늘도 비둘기한테 졌다</title>
+  <meta name="description" content="지각 3분 전, 출근길 비둘기를 피하고 화단으로 모셔다 드리는 세로 병맛 웹게임">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Gaegu:wght@400;700&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans+KR:wght@400;600;700&display=swap">
+</head>
+<body>
+  <main class="shell">
+    <div class="phone">
+      <div class="stage" id="stage">
+        <canvas id="game" tabindex="0" aria-label="게임 화면. 비둘기를 방석에 태워 길 밖으로 모셔다 드리고, 빈 곳을 좌우로 밀어 피한다. 톡 치면 짝."></canvas>
+        <div class="hud3" id="hud">
+          <button class="pz" id="btnPause" type="button" aria-label="일시정지"></button>
+          <span class="clk" id="hClock">08:57:00</span>
+          <span class="vw" id="hViews">조회수 0</span>
+          <span class="cb" id="hCombo"></span>
+          <span class="prog"><i id="hProg"></i></span>
+        </div>
+        <div class="fx3" id="fx" aria-hidden="true"></div>
+        <i class="edge3 l" aria-hidden="true"><b>화단</b></i><i class="edge3 r" aria-hidden="true"><b>화단</b></i>
+        <span class="ghost3" id="ghost" aria-hidden="true">👆</span>
+        <span class="heart3" id="heart" hidden aria-hidden="true">♥ 정 들어 버림<b><i id="heartBar"></i></b></span>
+        <span class="auto3" id="autoTag" hidden>자동 데모 · 화면을 누르면 직접 플레이</span>
+        <div class="cut3" id="cut" hidden></div>
+        <div class="pause3" id="pause" hidden>
+          <b>일시정지</b>
+          <button type="button" class="btn3" id="btnResume">다시 걷기</button>
+          <button type="button" class="btn3 ghost" id="btnMute2" aria-pressed="false">소리 끄기</button>
+        </div>
+        <div class="title3" id="title">
+          <p class="t-eyebrow">08:57 · 지각까지 3분</p>
+          <h1><span>오늘도</span><span class="y">비둘기한테 졌다</span></h1>
+          <button type="button" class="btn3 primary" id="btnStart">탭해서 출근하기</button>
+          <div class="t-row">
+            <button type="button" class="btn3 ghost" id="btnDemo">자동 데모 보기</button>
+            <button type="button" class="btn3 ghost" id="btnMute" aria-pressed="false">소리 끄기</button>
+          </div>
+          <p class="t-help">비둘기를 꾹 눌러 화면 옆 화단으로 끌면 모셔다 드림 · 톡 치면 짝(한 칸 비켜 줌) · 빈 곳을 좌우로 밀면 피하기</p>
+          <p class="t-note">실제 비둘기는 만지거나 옮기지 마세요. 이 게임의 비둘기는 출근 셔틀 전문 배우입니다.</p>
+        </div>
+        <div class="flat3" id="noGl" hidden><b>3D를 켤 수 없는 브라우저예요</b><span>WebGL을 지원하는 최신 브라우저에서 열어 주세요.</span></div>
+      </div>
+    </div>
+  </main>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
