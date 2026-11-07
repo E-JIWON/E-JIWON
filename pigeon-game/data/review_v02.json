@@ -1,0 +1,290 @@
+[
+ {
+  "lens": "모바일 터치 실측 플레이테스트. 390x844, hasTouch, isMobile, DPR 1, 실제 터치는 CDP Input.dispatchTouchEvent로 보냈다. 이 샌드박스에서는 CDP 터치 한 번의 왕복이 110~260ms라서, 시간에 민감한 탭과 플릭은 Input.synthesizeTapGesture와 synthesizeScrollGesture로 보내고 페이지 안에서 pointer 이벤트 시각을 기록해 실측했다. 스크립트·결과 JSON·스크린샷은 모두 /tmp/claude-0/-home-user-E-JIWON/91b8b42b-97d8-5b7f-a765-a7e9af8365de/scratchpad/pigeon/review/ 아래에 있다.",
+  "findings": [
+   {
+    "severity": "high",
+    "title": "터치로 잡는 순간 비둘기가 길 끝(z=-14)으로 순간이동한다. 70px 오프셋 지점이 지평선 위나 먼 곳으로 투영되고, 그때 직전 x값을 그대로 쓴다",
+    "evidence": "review/touch_cases2.js(결과 cases2.out.json)로 실제 터치를 보냈다. 비둘기 몸통을 누른 뒤 움직이지 않고 떼었다.\n- still_far: 왼쪽 차선(x -1.3, z -9.41) 비둘기. 손가락 (92,215.7)이면 링 지점이 (92,145.7)로 지평선(약 y169) 위다. 그래서 drag가 {x:0, z:-14}가 되고, 비둘기가 x 0, z -13.99로 날아간다. 떼면 '살포시… 근데 내 앞인데?'가 뜨고 비둘기가 내 차선에 놓인다.\n- still_mid: 오른쪽 차선 z -6.49 비둘기도 똑같이 x 0, z -14로 간다.\n- stillNear(touch_cases3.js): 왼쪽 차선 z -5.52 비둘기. 링 지점 (64.6,172.5)은 지평선 바로 아래라 먼 교점이 잡히고 x가 -3.1로 클램프된다. 끌지 않고 떼기만 했는데 '모셔다 드림 +2'(콤보 +2)가 나온다.\n- 120ms 넘게 누른 '탭'도 같다. 옆 차선 비둘기가 x 0, z -10.6으로 옮겨진다.\n- 스크린샷: review/t-jump-touch.png는 손가락(빨간 점)이 왼쪽 차선에 있는데 방석 위 비둘기와 링은 길 끝 가운데에 있다. review/t-jump-mouse.png(오프셋 0)는 커서 아래에 그대로 있다.\n- 실측(__p3dbg.scr, 캔버스 280×513): 리치 존 비둘기 몸통은 화면 y 206~298, 지평선은 약 169, z -14 클램프선은 211이다. 몸통 y-70이 211보다 작으면 클램프되므로, z가 약 -3.25보다 먼 비둘기(리치 깊이의 약 93%)는 잡는 즉시 튄다.\n- 원인: part3d.js 367·370행(standalone.html 1584·1587행). q=py-off를 그대로 레이캐스트한다. 교점이 없으면 st.drag.z=-14만 넣고 x는 newRun 기본값이나 직전 드래그 값을 그대로 둔다. 교점이 너무 멀면 x를 ±3.1로 클램프하고, 이게 |x|>2.1 조건에 걸려 'out'이 된다.\n- (1)번 '가장자리 놓기'가 통과한 건 테스트가 놓기 전에 손가락을 70px 넘게 아래로 내렸기 때문이다.",
+    "fix": "part3d.js grab()(354행)에 st.g0=[px,py]를 저장한다. drag()(366~373행, standalone 1583~1590)는 아래처럼 바꾼다.\n```\nconst mv=st.g0?Math.hypot(px-st.g0[0],py-st.g0[1]):99;\nlet q=py-(off||0)*Math.min(1,mv/40);\nq=Math.max(q, scr(0,0,REACH[0])[1]+2);\nconst g=groundAt(px,q); if(!g) return;\nst.drag.x=clamp(g.x,-3.1,3.1); st.drag.z=clamp(g.z,REACH[0],-2.8);\n```\n이렇게 하면 잡는 순간 링은 손가락(=비둘기) 밑에 있고, 움직이는 만큼 70px로 벌어진다. 지평선 위로 가면 직전 유효값을 유지한다. outcome()(364행)의 'out' 판정은 |drag.x|>2.1 대신 링 화면 x가 가장자리 띠에 있는지로 바꾼다. 검증: touch_cases2.js의 still_*에서 drag.z가 원래 z±1 이내이고 comboDelta가 0이어야 한다."
+   },
+   {
+    "severity": "medium",
+    "title": "120~180ms 탭이 '짝'이 아니라 잡기로 확정된다. 탭 허용창(180ms)이 프레임 루프의 120ms 확정에 잘려 결과가 프레임 타이밍에 좌우된다",
+    "evidence": "touch_cases3.js midTaps에서 synthesizeTapGesture로 탭을 보냈다.\n- 실측 177.8ms·182.1ms 탭: 120ms 이후 프레임이 1번 돌았다. 그래서 '구? (끄덕)'으로 잡힌 뒤 떼기가 됐고, 옆 차선(x ±1.3) 비둘기가 x 0, z -10.6으로 옮겨졌다. '살포시… 근데 내 앞인데?', 콤보 +0이다.\n- 실측 129·162·177ms 탭: 120ms 이후 프레임이 돌지 않았다. 그래서 '짝!'으로 콤보 +1이 됐다.\n- 결론: 같은 길이의 탭도 결과가 프레임 타이밍에 따라 달라진다. 60fps 실기기에서는 약 120~137ms 이상의 탭이 전부 잡기가 된다.\n- 코드: part3d.js 431행(standalone 1648)의 update()가 now()-t0>=120이면 confirmPending을 부른다. 그래서 548행(1765)의 end() `dist<10 && dtm<180` 탭 분기는 120ms 이후로는 실행될 수 없다.\n- 패널 규칙끼리도 충돌한다. [잡기 확정]은 120ms, [탭]은 180ms다.",
+    "fix": "431행의 시간 확정 기준을 180ms(구튜버는 200ms)로 올려 탭 창과 맞춘다. 빠르게 끌어 잡는 경우는 537행의 '10px 이상·1px/ms 이하 이동' 확정이 이미 처리하므로 드래그 반응은 느려지지 않는다. 120~180ms 사이에는 '구?' 표정만 보여 준다. 반대로 548행 탭 창을 120ms로 줄이는 방법도 있는데, 어느 쪽이든 패널의 두 규칙 문구를 하나로 통일한다. 회귀 테스트: synthesizeTapGesture duration 150/175에서 held가 없고 콤보가 +1이어야 한다."
+   },
+   {
+    "severity": "medium",
+    "title": "정 게이지가 '가만히'가 아니라 '이벤트당 2px 이하 이동'으로 쌓인다. 천천히 끌어도 입양 참사로 판이 끝날 수 있다",
+    "evidence": "- 코드: part3d.js 368행(standalone 1585) `if(Math.hypot(px-st.dpx,q-st.dpy)>2) st.lastMove=now()`는 직전 이벤트와의 거리만 비교한다. 442행(1659)은 lastMove 뒤 100ms가 지나면 adoptT를 쌓는다.\n- 재현(touch_adopt.js, adopt.out.json): 실제 터치로 잡은 뒤 같은 pointerId로 원 궤적 pointermove를 같은 간격으로 보냈다. 이벤트당 1.9px면 3.2초에 adoptT가 2.1까지 쌓였고, 2.6px면 0이었다. 판정 기준이 속도가 아니라 이벤트당 거리라는 뜻이다.\n- 실기기 영향: Chrome은 pointermove를 프레임당 1개로 합친다. 60Hz에서 이벤트당 1.9px는 0.11px/ms로, 패널의 '가만히' 기준(0.05px/ms)의 2배인데도 정지로 취급된다. 120Hz면 0.23px/ms까지 정지로 본다. 닭둘기를 천천히 끌면 2.5초 뒤 fail('adopt')로 판이 끝난다.\n- 패널 [정 게이지]의 '움직이며 끄는 시간은 쌓이지 않으므로 닭둘기를 끌다가 오발동하지 않는다'를 어긴다.\n- 반대 방향 문제도 있다. 이벤트 간격이 100ms를 넘는 저프레임 상황에서는 끄는 중에도 쌓인다(review/t-edge.png에서 끄는 도중 '정 들어 버림'이 표시됨).",
+    "fix": "앵커 기준으로 바꾼다. drag()에 `if(!st.anc||Math.hypot(px-st.anc[0],q-st.anc[1])>5){st.anc=[px,q];st.lastMove=now();}`를 넣고(5px/100ms ≈ 0.05px/ms), grab()(357행)에서 st.anc=null로 초기화한다. 다른 방법으로, e.timeStamp를 써서 최근 150ms의 이동거리/시간이 0.05px/ms 미만일 때만 adoptT를 쌓아도 된다."
+   },
+   {
+    "severity": "medium",
+    "title": "'짝' 탭이 옆 차선 비둘기를 내 차선으로 옮긴다(콤보 +1까지 줌)",
+    "evidence": "- 재현: cases2.out.json tap50_sideLane. 나는 가운데 차선(0), 비둘기는 오른쪽 차선(x 1.07)이다. 58ms 탭에 '짝!' 콤보 +1이 뜨고 tx=0이 되어, 비둘기가 내 차선으로 들어와 다가온다. 내 차선 비둘기를 탭했을 때는 x 0.17에서 tx -1.3으로 정상적으로 비켰다.\n- 코드: part3d.js 349행(standalone 1566). 내 차선을 뺀 후보가 비면 `opts=[cur-1,cur+1].filter(범위)`로 되돌아가는데, 남는 게 내 차선뿐이다.\n- 패널 [탭] '한 칸 옆으로 비키게'와 반대다. 이후 부딪히면 u.mine=true라 'self'(셀프 통행 제한) 참사로 집계된다.",
+    "fix": "349행을 `if(!opts.length){ u.tx=Math.sign(cur)*2.6; u.leaving=true; u.placed=false; st.combo++; st.best=Math.max(st.best,st.combo); bubbleAt(p,'구…'); return; }`로 바꿔 바깥 화단으로 한 걸음 비키게 한다. 아니면 이동 없이 콤보 없이 '구. (이미 비켜 있음)' 말풍선만 띄운다."
+   },
+   {
+    "severity": "medium",
+    "title": "HUD 좌상단 '일시정지' 아이콘이 눌리지 않고, 누르면 헛박수로 세져 3번이면 판이 끝난다",
+    "evidence": "- 마크업·CSS: .hud3 .pz(standalone.html 95행 CSS, 376행 마크업)는 일시정지 모양인데 pointer-events:none이다. 아이콘 중심의 elementFromPoint는 canvas#demo다.\n- 재현: touch_pause.js에서 아이콘 중심을 3번 탭했다. 매번 '짝!'이 떴고 claps가 1→2→3으로 올라 fail('claps')('출근길 즉석 공연')로 판이 끝났다. 탭 사이에도 dist가 10.7, 9.8씩 계속 진행해 게임은 멈추지 않았다.",
+    "fix": "standalone 376행을 `<button class=\"pz\" aria-label=\"일시정지\">`로 바꾸고 `.hud3 .pz{pointer-events:auto}`를 준다. 클릭 핸들러에서 live()의 stop()/start()를 토글하고 일시정지 오버레이를 띄운다. 기능이 없을 거라면 아이콘을 지운다. 추가로 end()(part3d.js 549행)에서 시작점이 HUD 띠(`P.y0<S.h*.12`)인 탭은 헛박수로 세지 않는다."
+   },
+   {
+    "severity": "medium",
+    "title": "리치 밖 비둘기를 눌러 끌면 차선이 바뀐다. 잡기 가능 여부를 보여 주는 표시도 없다",
+    "evidence": "- 재현: touch_far.js. z -16.94 비둘기(화면 y 196, 리치 경계 y 206보다 10px 위)를 누르고 60px 천천히 끌었다. 잡히지 않았고, 말풍선도 없었고, 차선이 0에서 -1로 바뀌었다.\n- 코드: pick()(part3d.js 330행)은 inReach 밖 비둘기를 후보에서 빼서, pointerdown(527행, standalone 1744)이 swipe 모드가 된다.\n- 표시 없음: 외곽선 OUTL은 모든 비둘기가 같이 쓰는 재질 하나(14·21행)라 리치 안팎 색 차이가 없다. 손 아이콘(✋)도 거리와 상관없이 state==='walk'면 보인다(135행).\n- 패널 [잡기 가능 조건]의 '리치 존 외곽선 흰색'과 '끌면 구?(손이 안 닿음) 말풍선만'을 어긴다. 페르소나 서하린도 '안 잡히는 애는 티 나게'를 요구했다.",
+    "fix": "pointerdown에서 리치를 무시한 히트테스트(pickAny)를 먼저 한다. 비둘기 위인데 리치 밖이면 S.ptr={mode:'far',...}로 둔다. 이동하면 bubbleAt(p,'구? (손이 안 닿음)')만 1회 띄우고 move()는 부르지 않는다. 짧게 떼면 clap(null)로 처리한다. makePigeon(62행)에서 외곽선 재질을 비둘기마다 복제해 u.olMat에 두고, animP에서 `u.olMat.color.set(inReach(p)?'#FFFFFF':C.ink)`로 바꾼다. ✋ 아이콘도 리치 안에서만 보인다."
+   },
+   {
+    "severity": "medium",
+    "title": "리치 존이 패널 기준보다 멀고 화면 위쪽에 있다(실측 화면 40~58%, 패널 57~84%). 이게 오프셋 튐(1번 문제)의 근본 원인이다",
+    "evidence": "- 실측(touch_probe.js, __p3dbg.scr, 캔버스 280×513): REACH는 z -12~-2.6(카메라 z=1 기준 3.6~13m)이다. 비둘기 몸통은 화면 y 206~298px(40~58%), 지평선은 약 33%, 리치 끝 z -2.8은 y 324(63%)다.\n- 패널 [잡기 가능 조건]·[초기 구도]는 머리 앞 2~6m, 화면 57~84% 띠다.\n- 결과: 잡을 수 있는 띠가 엄지에서 먼 화면 가운데 위쪽에 있다. 화면 63~84%는 잡을 비둘기도 없고 패드도 아닌 죽은 띠가 된다. 70px(캔버스의 13.6%) 오프셋이 지평선을 넘는 것도 이 때문이다. 사용자가 말한 '길이 좀 더 가까웠으면'과 같은 지점이다.\n- 코드: setCam(part3d.js 234행: 높이 1.6m, lookAt z -6), fit()(239행, 수평 40°), REACH(285행).",
+    "fix": "setCam을 패널 초기값(카메라 높이 2.6m, 정수리 뒤 1.0m, 피치 -14°, 수평 FOV 38°)으로 바꾸고, REACH를 머리 앞 2~6m로 좁힌다. 그다음 touch_probe.js로 scr(0,.36,z)를 다시 재서 z 경계가 화면 57%와 84%에 오는지 확인한다. PAD(.84)는 그대로 둔다."
+   },
+   {
+    "severity": "low",
+    "title": "취소(두 번째 손가락·pointercancel)하면 x만 돌아오고 z는 끌어 둔 깊이에 그대로 남는다",
+    "evidence": "- 재현: cases3.out.json secondFinger. 비둘기를 잡아 z -5.68까지 끈 뒤 두 번째 손가락을 댔다. held가 풀리고 tx=ox(-0.08)라 x는 -0.07로 돌아왔다. 하지만 500ms 뒤 z는 -2.23이다. 끈 깊이에서 그대로 흘러온 값(-2.22)과 같고, 안 잡았다면 있었을 위치는 -0.25다.\n- cancelAtEdge도 x는 1.31로 돌아왔지만 z는 끈 깊이 그대로였다.\n- 코드: part3d.js 357행은 ox만 저장하고, 378행(standalone 1595)은 tx=ox만 넣는다.\n- 패널 [취소]는 '원래 자리로 240ms 동안'이다.",
+    "fix": "grab()에서 `u.oz=p.position.z`를 저장한다. release(cancel)에서 `u.tz=u.oz`를 넣고, 'drop' 처리(448행)에 `if(u.tz!=null){u.tz+=dz; p.position.z+=(u.tz-p.position.z)*Math.min(1,dt*12);}`를 추가한다. 착지하면 u.tz=null로 지운다. dt*12면 약 240ms에 맞는다."
+   },
+   {
+    "severity": "low",
+    "title": "잡기 보류(120ms 전) 중에 두 번째 손가락이 닿아도 잡기가 그대로 확정된다",
+    "evidence": "- 재현: cases3.out.json secondDuringPending. pointerdown#20(주 포인터) 1.2ms 뒤 #21(보조 포인터)이 닿았는데, 250ms 뒤 heldWithTwoFingers가 true였고 떼니 콤보가 +1 올랐다.\n- 코드: part3d.js 520행(standalone 1737)은 보조 포인터가 오면 mode==='drag'일 때만 취소한다. 취소한 뒤에도 S.ptr를 정리하지 않는다.\n- 패널 [취소]·[들고 있는 동안]은 '두 번째 손가락이면 취소', 'isPrimary 포인터만 받는다'이다.",
+    "fix": "520행을 `if(!e.isPrimary){ if(S.ptr){ if(S.ptr.mode==='drag') release(true); S.ptr.mode='void'; } return; }`로 바꾼다. pointermove(531행), end()(543행), update의 431행에서 mode가 'void'면 무시한다."
+   },
+   {
+    "severity": "low",
+    "title": "입력 수치가 패널 규칙과 다르다(오프셋·플릭·빈 곳 탭·가장자리 무시)",
+    "evidence": "- 터치 오프셋: 70px, x 0(526행, standalone 1743). 패널은 88px에 오른손 기준 x -12px다.\n- 플릭: 180ms, 0.7px/ms 초과(536행, 1753). 패널은 150ms, 1.0px/ms 초과다. 게다가 537행의 '10px 이상·1.0px/ms 이하면 확정'이 먼저 걸리기 때문에, 0.7~1.0px/ms 플릭은 플릭 분기에 닿지 못해 이 기준은 죽어 있다.\n- 빈 곳 탭: 250ms(549행, 1766). 패널은 150ms다.\n- 좌우 가장자리 16px에서 시작한 스와이프 무시(OS 뒤로가기 충돌 방지): pointerdown(519~529행)에 구현돼 있지 않다. 지금 시안은 캔버스가 화면 가장자리에서 55px 떨어져 있어 드러나지 않지만, 풀스크린 빌드에서는 문제가 된다.",
+    "fix": "live() 상단에 `const IN={offY:88, offX:-12, flickMs:150, flickV:1.0, tapEmptyMs:150, osEdge:16}`처럼 상수를 모아 526·536·549행이 이 값을 쓰게 한다. 왼손 설정에서는 offX 부호를 바꾼다. 536행은 `dtm<=IN.flickMs && ... && v>IN.flickV`로 바꾼다. pointerdown에 `if(e.clientX<IN.osEdge||e.clientX>innerWidth-IN.osEdge){S.ptr=null;return;}`를 추가한다."
+   }
+  ],
+  "ok_checks": [
+   "(1) 통과: 비둘기 위를 실제 터치(pointerType 'touch')로 누르면 '구?' 보류 말풍선이 뜬다. 120ms 뒤 held가 그 비둘기가 된다. 캔버스 폭 94% 지점으로 끌면 stage 클래스가 'holding edge-r'이 되고, 떼면 '모셔다 드림 +2 · 콤보 ×2', 비둘기는 drop에서 parked(x 2.5)가 되고 '★2.3 구.'가 뜬다(touch_cases1.js, cases1.out.json case1). 단, 이 통과는 놓기 전에 손가락을 아래로 내렸을 때만이다(1번 high 문제 참조).",
+   "(2) 통과(내 차선 비둘기 기준): 실측 69.7ms, 114ms 탭에서 '짝!' 콤보 +1이 뜨고, 비둘기가 한 칸(x 0.17에서 tx -1.3) 비킨다. held는 생기지 않는다(cases2.out.json tap50_myLane, tap100).",
+   "(3) 통과: 비둘기 위 60px 가로 플릭(synthesizeScrollGesture 1500px/s)에서 잡지 않았고(held false, 상태 walk) 차선이 0에서 1로 바뀌었다(cases2 flick).",
+   "(4) 통과: 하단 패드(캔버스 높이 90%)에서 누르고 200ms 가만히 있다가 비둘기 위까지 끌어 올려도 held와 '구?'가 없었다. 가로로 밀면 차선이 바뀐다. 92% 지점에서 ±65px 스와이프는 양방향 모두 차선을 바꾸고 held는 0이다(cases2 pad, cases3 padSwipe). 코드상으로도 PAD 판정이 pick 앞에 있고, 리치 띠(화면 40~58%)와 겹치지 않는다.",
+   "(5) 통과: 빈 하늘(높이 22%)과 빈 노면(74%)에서 ±65px 스와이프하면 차선이 이동하고, 보류나 잡기는 생기지 않는다(cases3 emptySky, emptyRoad).",
+   "(6) 부분 통과: 링이 유효한 지면 위에 있으면 정확히 70px 위다. 손가락 (140,359.3)에서 st.dpy 289.3, 링 투영 (140,289.3), offsetY 70이다(review/t-offset.png, 빨간 점 = 손가락, 파란 점 = 링). 마우스는 오프셋 0이라 터치에만 적용된다. 잡는 순간 튀는 문제는 findings 참조.",
+   "(7) 통과(x 복귀·벌점 없음): 들고 이동하던 중 두 번째 손가락이 닿으면 held가 즉시 풀리고, state drop, tx=ox, 콤보 +0이다. 가장자리(edge-r)에서 touchCancel을 보내면 edge-r과 holding 클래스가 지워지고, 콤보 +0, x가 1.3으로 돌아온다(cases3 secondFinger, cancelAtEdge). z 미복귀와 보류 중 두 번째 손가락 문제는 findings 참조.",
+   "(8) 통과: 캔버스의 계산된 touch-action은 none이다. 캔버스 위 세로 터치 드래그에서 scrollY가 675 그대로였다(대조군인 캔버스 밖 x=20은 675에서 917로 스크롤됨). 캔버스에서 시작해 캔버스 밖까지 끌어도 스크롤되지 않았다. 캔버스 위 두 손가락 핀치에서 visualViewport.scale이 1 그대로였다(대조군인 버튼 위 핀치는 1에서 2.97). 캔버스 더블탭도 확대되지 않았다(review/touch_scroll.js, touch_pinch.js). 폰 베젤(패딩 10px)에서는 페이지가 스크롤되는데, 의도된 동작이다.",
+   "모든 실행에서 pageerror나 콘솔 에러가 없었다.",
+   "측정 메모: 이 샌드박스(swiftshader, 약 20~30fps)에서는 CDP 터치를 await하면 왕복이 110~260ms 걸린다. 그래서 탭 길이나 플릭 속도는 수동 CDP 결과로 판단하지 않았다. synthesizeTapGesture(실측 49~182ms)와 synthesizeScrollGesture로 다시 쟀고, 이벤트별 시각은 페이지 안에서 기록했다(touch_latency.js, touch_timing.js, touch_rafcheck.js)."
+  ]
+ },
+ {
+  "lens": "코드 정합성·견고성 리뷰: part3d.js의 live() 상태 머신(보류→잡기→드롭·탭·플릭·입양), animP와 풀, 스냅샷(shot/portrait/renderStatic), 수명주기(visibility·IO·resize·reduce-motion), WebGL 컨텍스트. standalone.html 안의 3D 코드는 part3d.js와 같다(diff에서 빈 줄 1개만 다름). 그래서 줄 번호는 part3d.js 기준이다.",
+  "findings": [
+   {
+    "severity": "high",
+    "title": "'직접 해보기'를 누른 뒤 Space(짝)를 누를 때마다 판이 처음부터 다시 시작된다",
+    "evidence": "part3d.js:555의 keydown은 target이 BUTTON이면 Space를 return만 하고 preventDefault를 하지 않는다. 그래서 포커스가 남아 있는 #btnPlay(standalone.html:385)가 keyup 기본 동작으로 click된다. 이 click이 562 setMode('play')를 부르고, 516에서 newRun()이 실행된다. 캔버스 pointerdown이 e.preventDefault()(519-520)라서 캔버스를 눌러도 포커스가 버튼에서 빠지지 않는다(e_misc.js: 캔버스 클릭 후 activeElement=btnPlay). 페이지 안내문(standalone.html:388)은 'PC는 … Space 짝'이라고 안내한다. 재현(review/e_keys.js E1): 2.6초 진행 후 Space를 누르면 sameRun:false, st.t 2.62→0.17, seed 157134→970으로 새 판이 된다. 덧붙여 정규식 /INPUT|TEXTAREA|BUTTON|SUMMARY|A/는 앵커가 없어서 CANVAS·MAIN·LABEL 등 'A'가 들어간 태그에도 걸린다.",
+    "fix": "(1) 캔버스에 tabindex=\"0\"을 주고, btnPlay·btnDemo click 핸들러(562-563)에서 setMode 뒤에 canvas.focus({preventScroll:true})를 호출한다. (2) pointerdown(519)에서도 canvas.focus({preventScroll:true})를 호출한다. (3) Space는 document.activeElement가 canvas 또는 body일 때만 처리하고 preventDefault한다. 정규식은 /^(INPUT|TEXTAREA|SELECT|BUTTON|SUMMARY|A)$/로 고친다."
+   },
+   {
+    "severity": "high",
+    "title": "비둘기를 120~180ms 동안 '톡' 누르면 짝이 아니라 잡기 후 제자리 드롭(내 앞 차단)으로 처리된다",
+    "evidence": "update()는 보류 120ms(구튜버 160ms)에 confirmPending으로 잡기를 확정한다(part3d.js:431). end()는 P.mode==='pending'이고 180ms 미만일 때만 탭으로 본다(548). 그래서 120~180ms 탭은 이미 drag 모드여서 546의 release()로 가고, outcome은 'block'이 된다. 60fps 기기에서는 137ms 이상 누르면 항상 이 경로를 탄다. 재현(review/e_input3.js, performance.now 가상 시계로 '120ms 직후 프레임 1회'를 만듦): 93ms 누름은 짝으로 처리된다(combo+1, 옆 차선 이동, '짝!' '구…'). 151ms·171ms 누름은 heldAtUp:true, combo+0, 비둘기가 내 차선에 남고(state 'drop') 토스트 '살포시… 근데 내 앞인데?'가 뜬다. 이 비둘기는 u.mine=true여서 이후 부딪히면 'self' 참사가 된다. 패널 수치(120ms 확정, 180ms 탭)가 원래 겹치는데, 코드가 그 구간을 잡기 쪽으로 풀어서 안전망인 탭이 약해진다.",
+    "fix": "end()의 546을 다음으로 바꾼다: if(P.mode==='drag'){ if(!cancel && dtm<180 && dist<10){ release(true); clap(P.p); } else release(!!cancel); return; } P.p는 drag 모드에서도 남아 있으므로 그대로 쓸 수 있다. 다른 방법은 431의 시간 확정 임계를 탭 창 이상(180ms, 구튜버 200ms)으로 올리는 것이다."
+   },
+   {
+    "severity": "high",
+    "title": "천천히 계속 끌기만 해도 정 게이지가 차서 '비둘기가 나를 입양함'으로 판이 끝난다",
+    "evidence": "drag()의 정지 판정은 '직전 pointermove 대비 2px 초과 이동'(part3d.js:368)이라서 이벤트 빈도에 따라 결과가 달라진다. pointermove는 rAF에 맞춰 오므로, 60Hz에서는 120px/s 미만, 120Hz에서는 240px/s 미만 드래그가 모두 '정지'로 쌓인다(442). 패널 기준은 0.05px/ms(50px/s) 미만이다. 재현(review/e_input4.js, 프레임당 이벤트 1개): 프레임당 1.9px(60Hz면 114px/s, 120Hz면 228px/s)로 원을 그리며 쉬지 않고 움직였는데, 53개 이벤트 만에 하트가 뜨고 failKey 'adopt'가 됐다. 같은 조건에서 2.1px/이벤트로 401개 이벤트를 보냈을 때는 adoptT가 0이었다. 닭둘기는 추종 상한이 1.4m/s라 천천히 끄는 게 정상 플레이인데, 패널이 경고한 '닭둘기를 끌다가 오발동'이 그대로 남아 있다.",
+    "fix": "이벤트 사이 델타 대신 앵커와 시간창으로 판정한다. grab()에서 st.ax=px; st.ay=q로 초기화하고, drag()의 368을 if(Math.hypot(px-st.ax,q-st.ay)>5){ st.ax=px; st.ay=q; st.lastMove=now(); }로 바꾼다. 그러면 100ms 동안 5px 미만(0.05px/ms 미만)일 때만 쌓인다. getCoalescedEvents로 최근 100ms 경로 길이를 재는 방법도 된다."
+   },
+   {
+    "severity": "high",
+    "title": "닭둘기는 링·판정은 손가락 기준, 착지는 비둘기 위치 기준이라 '살포시 콤보'라고 해 놓고 셀프 참사가 난다",
+    "evidence": "outcome()은 st.drag.x(손가락 지면점, part3d.js:364-365)로 판정하고 링 위치·색도 st.drag 기준이다(441). 그런데 release()는 현재 p.position.x를 차선으로 반올림해서 착지시킨다(377, 382). 닭둘기는 1.4m/s 속도 상한(437-439) 때문에 손가락보다 한참 뒤처진다. 재현(review/e_fat.js): 내 차선(0)의 닭둘기를 옆 차선(1)으로 끌고 8프레임 뒤 놓았다. fingerLane 1, 닭둘기 x=0.43, 토스트 '살포시 · 콤보 ×1'(combo 0→1)이 떴지만 실제 placedLane은 0(내 차선), mine:true였다. 곧 충돌해 failKey 'self'(셀프 통행 제한)가 됐다(review/e-fat-self.png). 'out' 판정도 같은 원인으로, 차선에 있던 닭둘기가 dt*8 lerp로 화단까지 순간 이동한다. 패널의 '닭둘기는 현재 있는 자리에 앉는다', '놓기 전에 결과가 보여야 한다' 규칙을 모두 어긴다.",
+    "fix": "판정 기준점을 하나로 맞춘다. outcome()에서 const gx = st.held.userData.type==='fat' ? st.held.position.x : st.drag.x를 쓰고, fat이면 edge·out 판정도 |p.position.x|>2.1로 한다. 441의 링도 fat이면 W.ring.position.set(p.position.x,.03,p.position.z)로 그려 미리보기와 결과를 같게 만든다."
+   },
+   {
+    "severity": "medium",
+    "title": "비둘기 위에서 시작한 빠른 가로 플릭이 10px 지점에서 잡기로 확정된다(플릭 규칙에 사실상 도달하지 못함)",
+    "evidence": "보류 중 pointermove(part3d.js:533-537)는 t0부터의 누적 평균 속도를 쓴다. 10px 이상이고 1px/ms 이하이면 바로 confirmPending한다. 손가락은 멈춘 상태에서 가속하므로 10px 지점의 평균 속도는 거의 항상 1px/ms 미만이다. 그래서 536의 30px 플릭 검사에 닿기 전에 잡힌다. 재현(review/e_input2.js의 flick, busy-wait로 8ms 간격 정밀 디스패치): 17ms·10px(0.59px/ms)에서 held:true가 됐다. 33.7ms에 34px(1.01px/ms), 전체 72px/56ms(1.29px/ms)로 패널과 코드의 플릭 정의를 모두 만족했는데도 차선은 0→0 그대로였다. 코드의 플릭 속도 임계 .7은 실행되지 않는 코드다. func3d.js의 플릭 테스트는 2스텝 순간 이동이라 이 경로를 잡지 못한다.",
+    "fix": "보류 중 가로 우세(|dx|>1.5|dy|) 움직임은 150ms가 되거나 |dx|≥30px가 될 때까지 판정을 미룬다. 예: if(dtm<=150 && horiz && Math.abs(dx)<30) return; 그 뒤에 플릭 판정, 그다음 10px 잡기 확정 순서로 둔다. 속도는 최근 30~50ms 구간의 순간 속도로 잰다. 431의 120ms 시간 확정도 가로 우세 이동 중이면 150ms까지 미룬다."
+   },
+   {
+    "severity": "medium",
+    "title": "화면 밖으로 스크롤한 상태에서 탭으로 돌아오면 루프가 다시 돌아, 안 보는 사이 판이 진행되고 GPU도 낭비한다",
+    "evidence": "part3d.js:561의 visibilitychange는 visible이 되면 IO 상태를 보지 않고 start()한다. IO(564)는 교차 상태가 바뀌지 않으면 다시 호출되지 않는다. 재현(review/e_life.js E6): 플레이 모드에서 캔버스를 top -1714로 스크롤하자 루프가 멈췄다(st.t 1.05 고정). 이어서 hidden→visible을 보내자 8초 동안 st.t 1.05→6.48, 게임 시계 3.3→20.1, #demo draw 22,112→64,066으로 늘었다. 플레이 모드에서는 사용자가 보지 못하는 동안 9시 시계가 흐르고 충돌 참사가 날 수 있다.",
+    "fix": "IO 콜백에서 S.inView=en.isIntersecting을 갱신하고, const canRun=()=>S.inView&&!document.hidden&&(!REDUCE||S.mode==='play')를 둔다. visibilitychange와 IO 모두 canRun()?start():stop()으로 처리한다. 플레이 모드에서 stop되면 일시정지 상태를 표시한다."
+   },
+   {
+    "severity": "medium",
+    "title": "캔버스가 1px만 보여도 Space·화살표 키를 가로채서 페이지 스크롤을 막고 데모를 플레이로 바꾼다",
+    "evidence": "part3d.js:553의 가시성 검사는 r.bottom<0 || r.top>innerHeight뿐이고, 리스너는 document 전역이다. 재현(review/e_keys.js E2): 캔버스 아래 55px만 보이게 스크롤하고 body 포커스에서 Space를 누르자 scrollY 565→580으로 거의 움직이지 않았고 mode가 auto→play로 바뀌었다. 대조군(캔버스가 완전히 화면 밖)에서는 Space로 780→1567까지 정상 스크롤됐다. 기획 문서 페이지라 Space로 읽어 내려가는 사용자가 막힌다.",
+    "fix": "키 처리를 데모에 포커스가 있을 때로 제한한다(캔버스 tabindex=0 + 캔버스 keydown, 또는 activeElement가 .demo-ctl 안일 때). 최소한 IO의 intersectionRatio가 0.5 이상일 때만 처리한다."
+   },
+   {
+    "severity": "medium",
+    "title": "스토리보드 renderStatic이 크기 변화가 없는 resize에도 24장을 전부 3D로 다시 그리고, 부팅 때는 2번 그린다",
+    "evidence": "standalone.html:1904의 resize 디바운스가 1890 renderStatic을 부르고, renderStatic은 canvas[data-scene] 16장과 data-pigeon 8장을 전부 다시 그린다. sizeCanvas는 크기가 같으면 버퍼만 유지할 뿐 렌더는 건너뛰지 않는다. shot()/portrait()(part3d.js:251, 271)는 매번 fit()으로 SR.setSize를 부른다. 컷과 도감의 크기가 달라서 패스마다 MSAA와 preserveDrawingBuffer가 켜진 SR 드로잉 버퍼를 두 번 다시 할당한다. 측정(review/e_life.js E8, 크기 불변 resize 1회): SR draw 5,700회, clear 32회, 1,132ms짜리 롱태스크 1개(SwiftShader). 부팅 때 SR draw는 11,400회로 2패스였다(standalone.html:2124에서 fonts.ready가 renderStatic을 다시 부름). iOS는 툴바가 접히고 펼 때 resize가 나므로, 스토리보드를 스크롤하는 바로 그 순간 메인 스레드가 막힌다.",
+    "fix": "캔버스마다 마지막 렌더 크기와 DPR을 dataset에 저장해 같으면 건너뛴다. resize 핸들러는 innerWidth가 바뀔 때만 반응한다. 화면 밖 패널은 IntersectionObserver로 늦게 그린다. 3D 스냅샷은 createImageBitmap(SR.domElement)로 캐시하고, fonts.ready 때는 SB3의 2D 오버레이만 다시 합성한다. SR은 고정 내부 해상도로 한 번 그린 뒤 drawImage로 크기만 맞춘다."
+   },
+   {
+    "severity": "medium",
+    "title": "reduce-motion 정지 화면에서 캔버스 크기가 바뀌면 검게 비고 다시 그려지지 않는다",
+    "evidence": "REDUCE면 루프 없이 part3d.js:567에서 draw2를 한 번만 한다. resize()(283)→fit()→R.setSize가 드로잉 버퍼를 비우는데 다시 그리는 코드가 없다. 재현(review/e_life.js E7, reducedMotion:'reduce', 폭 390→360px): 캔버스 280×513→260×479, 스크린샷 고유색 10,091→681이었다. HUD DOM만 남고 3D 영역은 전부 검정이다(review/e7-reduce-after.png). 높이만 바뀌는 resize(URL 바)는 캔버스 크기가 그대로라 영향이 없었다(e_last.js). 그래서 폰 회전이나 좁은 창(.phone은 min(300px,78vw))에서 발생한다.",
+    "fix": "resize()에서 fit() 뒤에 if(!S.running) draw2(R,W);를 추가한다. 화면 밖에서 멈춘 상태에도 그대로 안전하다."
+   },
+   {
+    "severity": "medium",
+    "title": "패널 입력 규칙 일부가 빠져 있다: '잡기 가능' 표시가 없고, 리치 밖 비둘기를 끌면 차선 이동이 된다",
+    "evidence": "panel.json input_rules[1]·[2]는 '리치 존 비둘기 외곽선을 잉크→흰색으로', '리치 밖을 끌면 구?(손이 안 닿음) 말풍선만', '외곽선 표시가 필수'라고 정했다. 코드에서는 외곽선 재질 OUTL 하나를 모두가 공유하고(part3d.js:14), 리치 여부에 따라 바뀌는 표시가 없다(아이콘은 135에서 state만 본다). pick()은 리치 밖이면 null을 돌려주고(330), pointerdown은 스와이프 모드로 간다(528). 재현(review/e_last.js): z=-14 비둘기를 끌자 lane 0→1로 이동했고, 잡기도 말풍선도 없었다. input_rules[3]의 '가장자리 16px에서 시작한 스와이프 무시'도 pointerdown에 없다. 카메라 롤은 REDUCE와 상관없이 적용된다(430, 패널의 '멀미 줄이기'는 롤 0).",
+    "fix": "animP에서 inReach(p)에 따라 외곽선 색이나 아이콘 테두리를 바꾼다(비둘기별 OUTL 클론). pointerdown에서 리치 밖 비둘기를 누르면 S.ptr={mode:'far',p}로 두고, 움직이면 bubbleAt(p,'구? (손이 안 닿음)'), 떼면 clap(null)로 처리한다. px<16 || px>S.w-16에서 시작한 스와이프는 무시한다. REDUCE면 setCam의 roll과 tilt를 0으로 둔다."
+   },
+   {
+    "severity": "low",
+    "title": "스토리보드 컷 #9: 머리 위 황금 구구에 '✋ → 머리 위' 아이콘이 그대로 그려진다",
+    "evidence": "shot()의 part3d.js:255는 rider.userData.icon.visible=false 바로 뒤에 animP(rider,…)를 부른다. 그런데 animP의 135 `u.icon.visible = u.state==='walk'`가 rider의 기본 state 'walk' 때문에 아이콘을 다시 켠다. live()의 ride()(388)는 state='parked'를 넣어서 문제가 없다. review/e9-cut9.png와 확대본 review/e9-cut9-zoom.png에서 정수리 위에 알약 모양 라벨이 보인다.",
+    "fix": "255에서 animP 호출 전에 rider.userData.state='parked'를 넣는다(live와 같게). 또는 animP 뒤에 icon.visible=false를 둔다."
+   },
+   {
+    "severity": "low",
+    "title": "WebGL 컨텍스트가 3개이고 텍스처가 두 번 올라가며, DPR 상한이 2다",
+    "evidence": "측정(review/e_ctx.js): ① HAS3D 탐지용 컨텍스트(part3d.js:2)가 해제되지 않고 남아 있다(webgl, detached 300×150). ② 스냅샷 렌더러 SR(245, preserveDrawingBuffer:true, antialias). ③ 라이브 렌더러 R(278). 텍스처 업로드는 SR 61회 6.42MB, R 59회 6.5MB(레벨 0 기준, mipmap 제외)로 같은 캔버스 텍스처가 두 컨텍스트에 중복된다. 건물마다 FACADE.clone()(181)과 간판 signTex(187)를 새로 만들어 월드 2개 × 수십 장이 된다. fit()(239)의 DPR 상한은 2이고 MSAA가 항상 켜져 있다(패널 tech_notes는 1.5). SR은 부팅 뒤 resize 때만 쓰는데 컨텍스트와 텍스처를 계속 잡고 있다.",
+    "fix": "탐지 직후 gl.getExtension('WEBGL_lose_context')?.loseContext()를 호출한다. 스냅샷은 ImageBitmap으로 캐시한 뒤 SR.dispose(); SR.forceContextLoss()로 풀고 필요할 때 다시 만든다. setPixelRatio(Math.min(1.5,dpr))로 낮춘다. SR은 렌더 직후 같은 태스크에서 drawImage하므로 preserveDrawingBuffer:false로 바꾼다. 파사드 repeat는 텍스처 clone 대신 UV 스케일로 처리한다."
+   },
+   {
+    "severity": "low",
+    "title": "들고 있는 중 다른 비둘기와 부딪히면 들린 비둘기가 방석째 공중에 뜬 채로 속보 컷이 나온다",
+    "evidence": "fail()(part3d.js:393)은 들고 있던 비둘기의 state='walk', tx=ox만 바꾸고 lift와 x는 그대로 둔다. frame()(509)은 play 단계에서만 animP를 돌리므로 freeze/cut 동안 갱신되지 않는다. 재현(review/e_misc.js): 잡은 채로 다른 비둘기와 충돌시키자 failKey 'gugu'가 됐고, cut 단계에서 그 비둘기는 lift.y 0.55, cush.visible true, legs.visible false 상태였다. 위치에 따라 컷 오버레이에 가려지기도 한다.",
+    "fix": "fail()의 held 처리에 h.position.x=h.userData.ox; h.userData.lift.position.y=0; animP(h,st.t,0,true);를 추가한다. 또는 freeze 0.5초 동안 animP를 계속 돌려 착지시킨다."
+   }
+  ],
+  "ok_checks": [
+   "part3d.js와 standalone.html 안의 3D 코드는 같다(diff에서 빈 줄 1개만 다름)",
+   "start()는 S.running으로 막혀 있어 IO·visibilitychange·setMode가 겹쳐도 rAF 루프가 중복으로 시작되지 않는다(part3d.js:514)",
+   "풀 재사용 시 잔여 상태 없음: pool.get이 state·lift·turn·rotation·scale·visible을 리셋하고, addPig가 판마다 쓰는 필드를 리셋하며, animP가 legs·cush·icon·wings·head·shadow를 호출마다 다시 계산한다(live 기준)",
+   "보류 중 비둘기가 리치 밖으로 나가면 confirmPending이 스와이프로 바꾼다. 120ms 보류 동안 최대 0.77m만 움직여 풀로 반환될 수 없다. fail()과 newRun()은 S.ptr를 null로 만든다",
+   "newRun이 크로스워크·타워·링·하트·라이더·뒷통수 자세·fx·stage 클래스를 모두 초기화한다",
+   "release·fail·newRun 모두 링과 하트를 숨기며, 실험 중 UI가 남아 있는 경우는 없었다",
+   "dt는 50ms로 클램프되고, start 때 S.last=0이어서 첫 프레임 dt는 0이다",
+   "들고 있는 비둘기는 풀 반환(460)과 충돌 판정에서 빠진다. 두 번째 손가락 pointerdown이면 release(true)로 취소된다",
+   "높이만 바뀌는 resize는 캔버스 크기가 그대로라 정지 프레임이 유지된다",
+   "약 90ms 탭은 짝으로 정상 처리된다(콤보 +1, 옆 차선 이동)",
+   "모든 실험에서 pageerror와 console error가 0건이었다",
+   "유효한 재현 스크립트(모두 /tmp/claude-0/-home-user-E-JIWON/91b8b42b-97d8-5b7f-a765-a7e9af8365de/scratchpad/pigeon/review/ 안): e_keys.js, e_input2.js(flick 부분만), e_input3.js(tap), e_input4.js(adopt), e_fat.js, e_life.js, e_ctx.js, e_misc.js, e_last.js. e_input.js 전체와 e_input2.js의 tap·circle 부분은 SwiftShader 타이머 지연(실제 간격 약 140ms)으로 무효이므로 증거로 쓰지 않는다"
+  ]
+ },
+ {
+  "lens": "톤·시각 디자인 리뷰 (데스크톱 1280x900 / 폰 390x844, 시안·스토리보드 #1~#10·#12·#13·도감, panel.json tone_rules·camera_3d_notes 대비)",
+  "findings": [
+   {
+    "severity": "high",
+    "title": "터치로 잡는 순간 비둘기가 지평선 쪽으로 밀려나 약 20px로 작아지고 '구? (끄덕)' 말풍선에 가려짐. 방석·무표정·동의 연출이 화면에서 사라짐",
+    "evidence": "재현 스크립트 review/tone/touch.js(CDP 터치, 390x844). z −6.2에 둔 구구(약 39px)를 몸통에서 누르면 grab 직후 z −12.44, drag.z −14, 높이 21.4px로 줄어듦. 손가락 y 236, dpy 166으로 지평선 169px(0.33×513)보다 위라 groundAt이 null을 반환하고 drag.z가 −14로 고정됨. 스크린샷 phone-t1-touch-grab.png에서는 '구? (끄덕)' 말풍선(grab 때 원래 위치에 생성)이 멀어진 비둘기를 완전히 덮음. 마우스도 잡은 뒤 위로 40px만 끌면 z −14, 19.4px까지 줄어듦(play2-desk.out.json heldUp40, desk-p1-hold.png). 같은 상태로 입양 컷까지 가면 컷의 주인공 비둘기가 지평선의 점으로만 남음. 코드: standalone.html 1743(part3d 526) off=70, 1584~1587(part3d 367~370) `const q=py-off; g=groundAt(px,q); ... else st.drag.z=-14`, 1577 grab 말풍선. tone_rules [클립 잘림 점검]·[동의 연출]과 패널 입력안 (4)(88px 리프트)를 위반함.",
+    "fix": "drag()에서는 땅 좌표를 손가락 실제 위치(py)로 계산하고, 70~88px 리프트는 화면 표현으로만 처리한다. lift.position.y를 해당 깊이에서 88px에 해당하는 월드 높이로 올리거나 방석 오프셋으로 준다. groundAt이 null이면 −14로 보내지 말고 직전 drag.z를 유지한다. drag.z 클램프는 [-14,-2.8]을 리치 존 [-7,-2.6]으로 좁힌다. '구? (끄덕)' 말풍선은 위치가 안정된 다음 프레임에 비둘기 옆(x+40px)에 띄우고, pointerdown의 '구?' 말풍선은 grab에서 제거한다."
+   },
+   {
+    "severity": "high",
+    "title": "리치 존 판독성 부족: 대응 아이콘이 원근으로 3~11px 글자까지 줄고, '잡기 가능' 흰 외곽선이 없음",
+    "evidence": "__p3dbg.scr로 계측(play-desk.out.json meas, 스테이지 280x513). 아이콘 알약 높이와 글자 높이는 z −2.6에서 18.9px/11.1px, −6에서 10px/5.8px, −12(코드상 리치 존 끝)에서 5.5px/3.2px다. 패널 기준 '빌보드 아이콘 최소 22px'을 리치 존 어디에서도 충족하지 못함. 비둘기 키는 −2.6에서 70.6px, −6에서 39px, −12에서 21.8px다. 리치 존 REACH=[-12,-2.6](1502, part3d 285)으로 패널이 정한 2~6m보다 두 배 깊어서 22px짜리 비둘기도 잡힘. 외곽선은 공용 OUTL 하나로 늘 잉크색이고(1231, 1238 / part3d 14, 21) 흰색 전환 코드가 없음(스토리보드 #4 연출 메모의 '외곽선이 흰색으로'도 화면에 없음). 스크린샷 phone-demoC.png, x3-sb04.png, x3-sb08.png에서 '✋ 무거움'·'↔ 피하기'를 읽을 수 없음. 참고로 2D 폴백(fb-phone-demo.png)의 아이콘은 약 40px로 읽힘.",
+    "fix": "1329(part3d 112) 아이콘 SpriteMaterial에 sizeAttenuation:false를 주고 sp.scale.set(.25,.075,1) 정도로 고정한다(9:16 스테이지 기준 알약 약 28px). z<−16에서는 opacity를 거리에 비례해 줄인다. 아이콘 텍스처 폰트는 700 48px로 키운다. 외곽선은 비둘기마다 OUTL.clone()을 u.olMat으로 두고, animP에서 `u.olMat.color.set(inReach && u.state==='walk' && u.type!=='live' ? '#FFFFFF' : C.ink)`로 바꾼다. REACH는 [-7,-2.6]으로 줄이고 히트 반경 하한 22px은 유지한다."
+   },
+   {
+    "severity": "high",
+    "title": "화단에 모셔다 드린 '도착' 장면(착지·별점)이 화면 밖에서 일어남. 홀드 중에도 가장자리에서 비둘기가 반쯤 잘리고 민트 오버레이에 덮임",
+    "evidence": "touch.js에서 z −4.2로 들고 오른쪽 끝에 놓은 뒤 위치를 추적함(touch.out.json parkedTrack). 화면 x가 323→368→416→480…px로, 스테이지 폭 280px 밖에서 내려앉고 그대로 카메라 뒤로 빠짐. 스크린샷 desk-q4-drop-right.png와 phone-t3-after-drop.png에 모셔 드린 비둘기가 없음. '★2.3 구.' 말풍선만 clamp로 가장자리에 뜸(desk-g1-auto-hold.png). 홀드 중 가장자리(desk-q3-edge-right.png)에서는 비둘기가 화면 끝에 반쯤 잘리고, .edge3 그라데이션(111, 115행, holding 상태 opacity .75, edge에서 1)에 덮여 방석과 표정이 안 보임. 코드: release 1597(part3d 380) `u.tx=sd*clamp(|x|,2.5,3.05)`. z는 그대로 두고 월드와 함께 흘러감. tone_rules [클립 잘림 점검]('도착' 컷 사용)과 camera_3d_notes [길 밖 드롭 존 가시성](z ≥ 3m 보정, 좌우 11% 노출)을 위반함.",
+    "fix": "release의 'out' 분기에서 착지 지점을 화면 안으로 보정한다. `const tx=sd*2.45, tz=Math.min(p.position.z, 1-Math.abs(tx-st.camX)/(Math.tan(20*Math.PI/180)*0.8));`처럼 x가 화면 폭 90% 안에 들어오는 깊이를 쓴다. 이어 drop 상태에서 x·z를 함께 lerp하고, 별점 말풍선은 착지 뒤 그 비둘기 위에 띄운다. parked 비둘기는 0.8초 동안 z 흐름을 멈춘다. 홀드 중에는 보이는 x를 ±2.2로 클램프하고 판정만 st.edge로 한다. .edge3 오버레이 opacity는 .45 이하로 낮추거나 오버레이를 캔버스 위가 아닌 테두리 띠로 바꾼다."
+   },
+   {
+    "severity": "medium",
+    "title": "금지어('잡다', '처리')가 화면 문구에 남아 있음",
+    "evidence": "(1) 스토리보드 #4 캡션(노란 줄, 화면 자막): '꾹 잡고 쓱 → 화단에 모셔다 드림! 콤보 +2'(598행 JSON storyboard[3].caption). (2) 3D 컷 #8 오버레이: '한 마리 잡으면 더 온다 · 빈 차선으로'(1861행, x3-sb08.png). (3) 라이브 참사 컷 자막: '출근길 합창 공연 성황리 종료… 지휘자는 지각 처리'(1507행 F3.chat, part3d 290). 실제 컷에서도 확인함(desk-p12-chat-cut.png, play-desk.out.json chatCut). 같은 문구가 참사 목록 newsbar(598행 fail_events[5].caption)에도 있음. (4) 게임 캔버스 aria-label '비둘기를 잡아 끌어 옮기고'(375행). tone_rules [우위는 비둘기]가 UI 문구에서 금지한 '잡았다'와 '처리'에 해당함.",
+    "fix": "(1) '꾹 눌러 방석에 태우고 쓱 → 화단에 모셔다 드림! 콤보 +2'. (2) '한 마리 모시면 더 온다 · 빈 차선으로'. (3) '…지휘자는 지각으로 기록' 또는 '…지휘자도 지각'(1507과 598 fail_events[5] 둘 다 수정). (4) '비둘기를 방석에 태워 길 밖으로 모셔다 드리고, 빈 곳을 좌우로 밀어 피한다.'"
+   },
+   {
+    "severity": "medium",
+    "title": "'흔들기 무력화'와 '동의 끄덕임'이 구현되지 않음. 속도 상한, 하품 반응, 끄덕 모션이 없고 말풍선 두 개가 겹침",
+    "evidence": "held 추종이 `kk=Math.min(1,dt*16)` 지수 추종뿐이고 속도 상한이 없음(1654~1657, part3d 437~440). 60Hz에서 손가락이 한 프레임에 220px 튀면 비둘기가 16.7ms에 59px, 즉 3.5px/ms로 움직여 규칙 상한 2.5px/ms를 넘음. 흔들기 테스트(play.js, 1.2초 ±110px 왕복)의 fx 로그에 '하품' 류 반응이 없고, 코드에도 그런 문자열이 없음. 기울기는 최대 3.4°로 규칙 범위 안. '(끄덕)'은 말풍선 글자일 뿐이고 머리는 y축 두리번(±31°, 0.55rad)만 함. pointerdown의 '구?'(1746)와 grab의 '구? (끄덕)'(1577)이 같은 자리에 동시에 뜸(play2-desk.out.json chatToast: 125~155px와 108~172px가 겹침). tone_rules [흔들기 무력화]·[동의 연출] 위반이고, art_direction의 두리번 ±15°보다도 큼.",
+    "fix": "held 분기에서 한 프레임 이동량을 화면 기준 2.5px/ms×dt로 클램프한다(월드 이동량을 scr로 환산해 비율 축소). 600ms 안에 방향 반전이 4회를 넘으면 bubbleAt(p,'하암…')을 띄우고 추종 계수를 0.3배로 1초간 낮춘다. grab 시 u.head.rotation.x에 0.25rad를 300ms 동안 한 번 줘서 실제로 끄덕이게 한다. 두리번 진폭은 0.55에서 0.26rad로 줄인다. pointerdown 말풍선 엘리먼트를 S.ptr.bub에 저장했다가 grab에서 remove한다."
+   },
+   {
+    "severity": "medium",
+    "title": "참사 컷 구도: 프레임 전체가 흑백이고, 뉴스 바·결과 줄이 범인 비둘기 얼굴과 정수리를 덮으며, 결과 줄 대비가 2.3:1",
+    "evidence": "프리즈는 `.stage.freeze canvas{filter:grayscale(1)}`(89행)로 캔버스 전체가 회색이 됨(desk-p0-before-grab.png). camera_3d_notes [컷신]과 스토리보드 #11의 '배경 채도 0, 두 주인공만 컬러'가 반영되지 않음. 컷에서는 .news3(bottom:21%, 135행)가 충돌한 단톡방 비둘기의 얼굴을 가려 눈 윗부분만 보이고, .res3(bottom:13.5%, 138행) '구구 아카펠라 · 조회수 194'가 내 뒷통수 위에 얹힘(desk-p12-chat-cut.png). 정수리를 가리지 말라는 규칙([HUD와 웹캠])과 충돌하고, 황금 구구 탑승 상태라면 탑승 비둘기도 이 띠에 걸림. .res3는 흰색 14px에 text-shadow가 없고, 배경 중앙값 (169,162,152) 대비 2.53:1, (175,169,159) 대비 2.33:1로 측정됨(desk-p2-shake.png).",
+    "fix": "프리즈 때 CSS 필터 대신 W.scene을 순회해 소품 머티리얼을 회색 복제본으로 바꾸고, 충돌 비둘기 p와 머리 장면(hs)은 원래 색으로 한 번 draw2한다. 컷의 transform-origin을 '50% 40%'로 올리거나 .news3를 bottom:12%, .res3를 아래 레터박스 안(bottom:4.5%)으로 옮기고 .hint3는 레터박스 위쪽 줄로 보낸다. .res3에는 .toast3과 같은 잉크 외곽 text-shadow를 준다."
+   },
+   {
+    "severity": "medium",
+    "title": "스토리보드 캡션·도감·표에 v0.1 '훠이/박수' 전제가 남아 화면과 어긋남(목록)",
+    "evidence": "① #5 캡션 '급하면 짝! 짝 짝 짝', 조작 '3연타한다', 소리 '3박 박수와 쿵짝 리듬', 그리고 도감 터줏대감 닭둘기의 대응·개그('박수 3연타로 비켜 줌', '3칸 박수 게이지'): 3D 컷(x3-sb05.png)에는 게이지가 없고 '급하면 짝!' 글자만 허공에 뜸. 라이브 데모에서는 짝을 3번 쳐도 '구. (안 비킴)'만 3번 뜨고 x가 0→0으로 그대로임(play-desk.out.json fatClap, desk-p7-fat-clap3.png. 코드 1564 `if(u.type==='fat'){ bubbleAt(p,'구. (안 비킴)'); return; }`). ② #6 캡션 '급하면 짝: 2초만 기다려 줌': 라이브는 옆 차선으로 비킨 뒤 lag −0.6→0.45, 약 1.05초 만에 다시 따라붙음(1567, 1669). ③ #3 캡션 '아래쪽 어디서 밀어도 OK / 스치면 아슬! 2cm': 컷은 스와이프를 길 한가운데(H*.56, 1820)에 그렸고, 라이브에는 '아슬' 토스트가 없음(코드에 문자열 없음). ④ v0.2 섹션 페르소나 표 머리글 '탭 훠이'(404행, v0.2 동사는 '짝'). 히어로 다른 이름 후보 '훠이! 출근길'도 남아 있음(phone-hero.png). ⑤ #4 연출 메모 '외곽선 흰색', '★4.1 구.' 팻말: 화면에는 외곽선 변화가 없고 데모 말풍선은 '★2.3 구.'. ⑥ #8 캡션 '구구구님이 나갔습니다 →': 라이브는 잡을 때 '초대했습니다' 토스트 하나만 뜸.",
+    "fix": "①은 둘 중 하나로 맞춘다. clap()에서 fat이면 u.claps++ 하고, 3이 되면 '(무대 인사)' 말풍선과 함께 u.tx를 빈 차선으로 바꾸고 combo+1, 1~2타에는 '짝 1/3' 게이지 말풍선을 띄운다. 아니면 #5 캡션·조작·소리와 도감 대응·개그 문구를 '짝은 안 통함(구. 안 비킴), 영차로만'으로 고친다. ②는 lag 초기값을 −1.55로 바꿔 2초를 맞추거나 캡션을 '1초만 비켜 줌'으로 바꾼다. ③은 SB3[3]의 화살표·손가락을 H*.86(하단 패드)으로 내리고, 라이브에 근접 통과 시 '아슬! 2cm' 토스트를 추가한다. ④는 404행 '탭 훠이'를 '탭 짝'으로 바꾼다. ⑤⑥은 연출 메모와 캡션을 실제 화면에 맞게 고친다."
+   },
+   {
+    "severity": "medium",
+    "title": "WebGL이 없을 때의 2D 폴백이 v0.1 그대로임(전신 주인공, 탭 퍼펙트, 드래그 없음, 컷 내용 불일치)",
+    "evidence": "three.min.js를 404로 막고 렌더링해 확인(fallback.js, fallback2.js). 히어로 데모는 전신 주인공에 먼 카메라이고 탭만 됨. 1964행 '퍼펙트! 짝!'(v0.1 훠이 존 퍼펙트)이 그대로인데, 데모 힌트(388행)와 aria-label은 드래그를 설명함(fb-phone-demo.png). 스토리보드 폴백 SCENES도 어긋남(fb-combo.png): #4는 '짝!/퍼펙트! 콤보 ×2'(1054행) 아래 드래그 캡션, #8은 '[광장 비둘기 연합] 구구구님 외 3마리 입장', #12는 구튜버 LIVE 생방송 화면(1124행) 아래 '비둘기가 나를 입양함' 캡션, #13은 '통행 우선권 양보'(1138행) 아래 '셀프 통행 제한' 캡션. 사용자가 요청한 '뒷통수만'에도 어긋남.",
+    "fix": "SCENES[4]·[8]·[12]·[13]을 SB3 구도(방석 위 비둘기와 뒷통수, 퇴장→초대 알림, 입양 하트 칩, '여기 두신 분?')로 다시 그린다. 더 간단하게는 빌드 때 SB3 컷을 PNG로 구워 폴백에서 drawImage로 쓴다. demo2d에서는 drawHero를 뒷통수만 그리는 버전으로 바꾸고, '퍼펙트' 판정을 빼 '짝' 한 칸 비키기로 맞춘다. 폴백일 때는 .demo-hint와 aria-label을 '탭 = 짝, 좌우로 밀기 = 피하기(드래그는 3D 버전 전용)'로 바꾼다."
+   },
+   {
+    "severity": "medium",
+    "title": "폰(390px)에서 스토리보드가 2열이라 3D 컷 안 글자가 5~9px로 읽히지 않음",
+    "evidence": "343행 `@media … .board{grid-template-columns:repeat(2,minmax(0,1fr))}`로 컷 폭이 약 166px, u≈1.66. 캔버스 fillText 로그(shots.out.json, phone): '→ 구구님 외 3마리를 초대했습니다' 5px, '(꾸벅)' 5.9px, '여기 두신 분?' 6.5px, '꾹 눌러서 화면 옆으로' 8px, #12 칩 '구구시 가족관계증명서 · 세대주: 구구' 약 5px. 스크린샷 phone-sb04.png, phone-sb12.png. 데스크톱(260px 컷)에서는 #4의 '= 화단으로 모셔다 드림 (콤보 +2)'가 약 10px로 겨우 읽힘.",
+    "fix": "343행을 `@media (max-width:480px){.board{grid-template-columns:1fr}}`로 바꿔 컷 폭을 약 358px, u≈3.6으로 만든다. 아니면 outlined/chipC/bubble/newsBar의 폰트 크기를 Math.max(11, size)로 하한 처리한다."
+   },
+   {
+    "severity": "low",
+    "title": "스토리보드 3D 컷 소소한 연출 오류: 탑승 비둘기·프리즈 비둘기 위에 아이콘이 남고, 손가락 이모지가 비둘기에 겹치며, 스탬프가 말풍선을 덮음",
+    "evidence": "#9: 정수리 위 황금 구구 위에 '✋ → 머리 위' 알약이 그대로 보임(x3-sb09.png). shot()(1472, part3d 255)에서 icon.visible=false로 한 뒤 animP가 state 'walk' 기준으로 다시 켬. #13: 프리즈된 구구 위에 '↔ ✋' 알약이 남아 '여기 두신 분?' 말풍선과 겹침(x3-sb13.png, SB3[13]에 state 미지정, 1882). #4·#5: 👆 이모지가 방석과 몸통 위에 그려져(1830, 1837) 손이 비둘기를 찌르거나 받치는 그림이 됨. tone_rules [쥐는 손 금지]는 '손가락은 방석 아래 반투명 링으로만'. #5: '콤보 ×4 확정!' 스탬프가 '구. (영차…)' 말풍선을 덮어 둘 다 판독 불가(x3-sb05.png, 1838~1839). #10: '회사까지 80m'가 구구타워 간판 위에 겹침(x3-sb10.png).",
+    "fix": "1472에서 animP 호출 전에 `rider.userData.state='parked'`를 넣는다. SB3[13].st.pigeons[0]에 state:'parked'를 준다(또는 grayOver 컷은 아이콘을 전부 숨김). #4·#5의 finger()는 pr(x,.02,z) 위치의 반투명 흰 링(ell, alpha .5)으로 바꾸고 👆는 u*14 아래로 내린다. #5 스탬프는 H*.3으로 올리고 말풍선은 bx−u*22로 옮긴다. #10 문구는 H*.18로 올린다."
+   },
+   {
+    "severity": "low",
+    "title": "'모셔다 드림' 토스트가 화면 가장자리에서 잘림",
+    "evidence": "toast()의 clamp(x,70,S.w−70)(1541, part3d 324)는 반폭을 70px로 가정함. '모셔다 드림 +2 · 콤보 ×2'는 폭이 144px이고 애니메이션 정점에서 scale 1.05라 실측 left −2px, right 282px(스테이지 280)로 넘침(play2-desk.out.json dropLeft/dropRight). 자동 데모 첫 화면에서 '모'가 잘린 장면을 캡처함(crop-g0-toast.png). 콤보가 두 자리이거나 '셔틀 기사 보너스! · 콤보 ×12'면 더 많이 잘림.",
+    "fix": "append 뒤에 `const hw=d.offsetWidth*1.05/2+6; d.style.left=clamp(x,hw,S.w-hw)+'px';`로 실제 폭을 기준으로 클램프한다. bubbleAt도 같은 방식으로 처리한다."
+   },
+   {
+    "severity": "low",
+    "title": "3D 텍스처 글자가 웹폰트 로드 전에 그려져 대체 글꼴로 굳음(아이콘 등)",
+    "evidence": "boot는 fonts.load('20px \"Black Han Sans\"') 등 텍스트 인자 없이만 기다림(2128행). 그래서 한글 unicode-range 서브셋과 IBM Plex Sans KR 700은 아직 로드되지 않은 상태임. fillText 훅(shots.js) 기준 처음 6초에 한글 캔버스 텍스트 231건 중 18건이 document.fonts.check=false 상태로 그려짐: '✋ 무거움', '✋ 길 밖으로', '↔ 피하기', '✋ → 머리 위'(ICON_TEX, 1263~1275에 캐시), '꾹 눌러서 화면 옆으로' 등. 스토리보드 2D 글자는 fonts.ready 때 renderStatic으로 다시 그려지지만, 3D 아이콘 텍스처는 재생성되지 않아 라이브와 컷 모두에서 대체 글꼴로 남음(x3-sb09.png의 '✋ · 머리 위'에서 화살표가 점처럼 보임).",
+    "fix": "fontsReady에 `document.fonts.load('700 42px \"IBM Plex Sans KR\"','↔✋→무거움길밖으로피하기머리위')`와 FD, FH의 실제 문구 샘플 로드를 추가한다. 또는 document.fonts.ready.then에서 ICON_TEX 캐시를 비우고 기존 스프라이트의 map을 iconTex(type)로 다시 지정한 뒤 needsUpdate=true로 한다."
+   },
+   {
+    "severity": "low",
+    "title": "도감 '구튜버' 초상에서 핵심 소품(셀카봉 끝 휴대폰과 링라이트)이 위쪽으로 잘림",
+    "evidence": "desk-dex.png와 crop-dex-live.png에서 셀카봉 끝 휴대폰과 링라이트가 아트 영역 위 가장자리에 잘려 일부만 보임. 도감 본문은 '셀카봉과 링라이트(1.5배 과장)'를 종류 구분 소품이라고 설명함. portrait() 1488~1489(part3d 271~272)는 live에 far=2.3, lookAt y .58을 씀.",
+    "fix": "live는 far 2.9, `PC.lookAt(0,.72,0)`으로 바꾸거나 PC.fov를 30에서 36으로 넓힌다."
+   },
+   {
+    "severity": "low",
+    "title": "3D 깊이감이 패널 수치보다 약함: 안개가 얕고 25m 페이드인이 없어 비둘기가 팝인되며, 역광 림라이트가 없음",
+    "evidence": "Fog(C.sky,15,60)(1380, part3d 163)이고 스폰 위치는 z −34(1538)라 출현 순간 안개가 약 44%뿐이어서 회색 점이 갑자기 나타남. 패널 값은 '25m 안개 속 페이드인, 안개 끝 약 32m'. 조명은 Hemisphere와 앞왼쪽 Directional(−4,8,5)뿐(1382~1383)이라 camera_3d_notes [3D 체감의 출처]의 '아침 역광 림라이트'가 없음. 시차(레인 이동 시 camX lerp)와 외곽선은 정상이고 판정에는 영향 없음.",
+    "fix": "Fog(C.sky,12,34)로 바꿔 스폰 지점 z −34를 거의 완전히 안개로 덮어 자연스럽게 페이드인되게 한다. 역광은 `new T.DirectionalLight('#FFD9B0',.35)`를 (0,3,−12)에 추가하고 head 씬(hs)에도 같은 역광을 둔다. 횡단보도 '숨 고르기' 토스트 때 camX 추종을 0.5초 멈추는 연출을 고려한다."
+   },
+   {
+    "severity": "low",
+    "title": "뒷통수 위치와 크기가 목표보다 크고 높음, 실제 19.5:9 전체 화면에서는 더 올라감",
+    "evidence": "스크린샷 픽셀 계측(desk-q4-drop-right.png, phone-t3-after-drop.png): 정수리 79.1%(삐침 끝 77.2%), 최대 폭 29.3%. 목표는 83% 선, 약 27%. 하단에는 재킷과 빨간 끈도 보임(사용자 요청은 '뒷통수만'). 머리는 hcam 기준 고정 좌표 (0,−1.1,−2.2)(1365, part3d 148)이고 vfov는 fit()(1456)에서 화면비로 역산하므로, 390x844 전체 화면(aspect .462)이면 정수리가 약 75.5%까지 올라감(계산값). 데모가 9:16 프레임이라 지금은 드러나지 않음.",
+    "fix": "fit()에서 hcam을 갱신한 뒤 `const th=Math.tan(cam2.fov*Math.PI/360)*2.2; head.position.y=-(0.66*th)-0.2; head.userData.base.y=head.position.y;`로 정수리를 83% 선에 고정하고, 스케일은 .8에서 .74로 줄여 폭 27%에 맞춘다. 재킷 구(1371)는 y를 −.62로 내리거나 높이를 줄여 거의 안 보이게 한다."
+   },
+   {
+    "severity": "low",
+    "title": "3D 비둘기 눈이 아트 규칙('선 두 개짜리 반쯤 감긴 눈, 실사 눈동자 금지')과 다름",
+    "evidence": "makePigeon 1292~1294(part3d 75~77)는 주황 홍채 구, 검은 동공 구, 위 눈꺼풀 구 조합이라 실제 비둘기 눈에 가까움(crop-hold-face.png, crop-dex-live.png). 무표정 톤은 살아 있어 버둥거림으로 읽히지는 않음. 다만 2D 폴백 비둘기는 선 두 개 눈이라 3D와 스타일이 갈림(fb-phone-demo.png).",
+    "fix": "홍채·동공 구를 빼고 잉크색 납작 캡슐(SPH, scale .045×.009×.012, rotation.z ±.12) 두 개로 반쯤 감긴 선 눈을 만든다. 눈꺼풀 구는 유지한다."
+   }
+  ],
+  "ok_checks": [
+   "들린 자세: 방석 표시, 다리 숨김, 날개 접힘(회전 0), 몸 기울기 최대 3.4°(규칙 ±8° 이내), 비둘기 자체 회전 0. 버둥거림·퍼덕임·던지기 연출 없음(held1 계측, crop-hold-face.png)",
+   "라이브 토스트·말풍선 문구('모셔다 드림 +2', '살포시… 근데 내 앞인데?', '셔틀 기사 보너스!', '★2.3 구.', '황금 구구 탑승!')에 금지어 없음",
+   "입양 뒤집기 준수: '비둘기가 나를 입양함', '세대주: 구구', '♥ 정 들어 버림'(desk-p2-shake.png)",
+   "인게임 HUD(시계·진행 바·조회수·콤보)는 상단 0~11% 하늘 띠 안에 있고 지평선은 33.0%(계측 .330). 게임 중에는 정수리를 가리지 않음",
+   "카메라 롤 ±1.5° 클램프(.026rad), 뒷통수 기울기 ±8°(.14rad). 헤드밥·FOV 킥 없음",
+   "수평 화각 40° 고정에서 vfov 역산(fit) 방식이라 옆 차선이 잘리지 않음",
+   "툰 셰이딩·외곽선 일관성: 비둘기·나무·머리 BackSide 외곽선, 건물 Edges 라인. 레인 이동 때 건물·가로수 시차 확인",
+   "황금 구구 탑승은 정수리 위에 보이고 UI가 가리지 않음(desk-q9-gold-ride-later.png)",
+   "데스크톱·폰 모두 페이지 가로 스크롤 없음(scrollWidth=clientWidth), 콘솔·페이지 오류 0건",
+   "make3D는 standalone.html과 part3d.js가 동일함(diff 일치). 스토리보드 #1~#10·#12·#13은 WebGL에서 3D 스냅샷으로 정상 렌더링됨",
+   "재현 스크립트와 스크린샷 위치: /tmp/claude-0/-home-user-E-JIWON/91b8b42b-97d8-5b7f-a765-a7e9af8365de/scratchpad/pigeon/review/tone/ (shots.js, closeups.js, play.js, play2.js, touch.js, ghost.js, fallback.js, fallback2.js, v2tab.js, *.out.json, *.png)"
+  ]
+ }
+]
